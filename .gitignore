@@ -1,0 +1,26 @@
+# Patient data — NEVER commit
+data/
+*.dcm
+*.nii
+*.nii.gz
+
+# Large binaries / containers
+containers/
+*.sif
+*.simg
+
+# Logs
+*.log
+slurm_logs/
+
+# Scratch & throwaway
+scratch/
+scratch_archive/
+scratch_failed/
+trash/
+
+# Env / cache
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+crkit-20180703/
