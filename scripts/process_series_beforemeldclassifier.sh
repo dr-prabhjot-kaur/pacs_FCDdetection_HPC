@@ -3,24 +3,17 @@
 # sbatch script for DICOM study-level processing on BCH HPC.
 #
 # Stage 1 (this job): organizeinputs.py — triage, dcm2niix, layouts.
-# Stage 2 (dispatched at the end): GPU inference — nnUNet, meld_graph, meld_classifier.
+# Stage 2 (dispatched at the end): predict_gpu.sbatch — GPU inference (nnUNet + registration).
 #
 # Marker contract:
-#   .organize_done           organizeinputs.py succeeded; GPU sbatch was dispatched
-#   .organize_failed         organizeinputs.py failed; no GPU runs
-#   .nnunet_done             nnUNet inference succeeded
-#   .nnunet_failed           nnUNet inference failed
-#   .meld_graph_done         meld_graph inference succeeded
-#   .meld_graph_failed       meld_graph inference failed
-#   .meld_classifier_done    meld_classifier inference succeeded
-#   .meld_classifier_failed  meld_classifier inference failed (or dispatch/preflight failed)
+#   .organize_done    organizeinputs.py succeeded; GPU sbatch was dispatched
+#   .organize_failed  organizeinputs.py failed; no GPU runs
+#   .nnunet_done      nnUNet inference succeeded
+#   .nnunet_failed    nnUNet inference failed
 #
 # The submitter waits for ALL relevant markers before pulling back. See
-# submitter.py for the policy (organize_failed = pull back early; all done =
-# pull back as success; organize_done + a *_failed = partial; etc).
-#   NOTE: submitter.py must include .meld_classifier_done/.meld_classifier_failed
-#   in its completion check, the same way nnunet/meld_graph are handled, or it
-#   will archive the study before the classifier job finishes.
+# submitter.py for the policy (organize_failed = pull back early; both done =
+# pull back as success; organize_done + nnunet_failed = partial; etc).
 #
 # Invoked as:
 #   sbatch --job-name=dicom-<study_key> process_series.sh <hpc_scratch_dir>
@@ -138,8 +131,7 @@ echo "Touched $scratch/.organize_done"
 
 study_key=$(basename "$scratch")
 
-# Helper: dispatch a downstream GPU sbatch that has its OWN #SBATCH headers and
-# runs inside a .sif. Args:
+# Helper: dispatch a downstream GPU sbatch. Args:
 #   $1 = friendly name (for log)
 #   $2 = predict sbatch script path
 #   $3 = container .sif path
@@ -202,7 +194,7 @@ dispatch_downstream() {
 }
 
 # nnUNet with Rigid T1/FLAIR registration (GPU)
-# Originally copied from here-
+# Originally copied from here- 
 # NNUNET_PREDICT="/lab-share/Rad-Warfield-e2/Groups/Imp-Recons/prabhjot/datasets/TrainingdataforNNUNET/ReadyForNNunet/nnUNet_raw/checkruncontainer/predict_container.sh"
 NNUNET_PREDICT="/lab-share/Rad-Warfield-e2/Groups/Imp-Recons/prabhjot/work/gits/pacs_FCDdetection/nnunet/checkruncontainer/predict_container.sh"
 
@@ -217,46 +209,6 @@ MELD_SIF="${MELD_SIF:-$REPO_ROOT/containers/meld_graph_gpu.sif}"
 dispatch_downstream "meld-graph" "$MELD_PREDICT" "$MELD_SIF" \
     "MELD_SIF=$MELD_SIF" \
     "meld_graph"
-
-# meld_classifier (conda-native — NO .sif, so it can't use dispatch_downstream).
-# run_meld_classifier.sh has no #SBATCH headers, so resources are set here on the
-# sbatch CLI: 1 GPU, 64G, generous wall time (real FreeSurfer recon-all is the long
-# pole and holds the GPU idle until the prediction stage — acceptable for now).
-# The job writes .meld_classifier_done/.meld_classifier_failed itself.
-MELD_CLS_RUNNER="$REPO_ROOT/meld_classifier/run_meld_classifier.sh"
-echo
-echo "------------------------------------------------------------"
-echo "Dispatching meld-classifier (GPU sbatch, conda-native, no sif)..."
-echo "  runner:   $MELD_CLS_RUNNER"
-echo "  job name: meld-classifier-$study_key"
-if [ ! -f "$MELD_CLS_RUNNER" ]; then
-    echo "!! $MELD_CLS_RUNNER not found"
-    echo "   Marking meld_classifier step as failed."
-    touch "$scratch/.meld_classifier_failed"
-else
-    mc_out=$(sbatch \
-        --job-name="meld-classifier-$study_key" \
-        --partition=bch-gpu \
-        --gres=gpu:1 \
-        --mem=64G \
-        --cpus-per-task=4 \
-        --time=24:00:00 \
-        --output="$REPO_ROOT/data/slurm-logs/meld_classifier_%j.out" \
-        --error="$REPO_ROOT/data/slurm-logs/meld_classifier_%j.err" \
-        --export="ALL" \
-        "$MELD_CLS_RUNNER" \
-        "$scratch" 2>&1)
-    mc_rc=$?
-    echo "$mc_out"
-    if [ $mc_rc -ne 0 ]; then
-        echo "!! sbatch dispatch failed (rc=$mc_rc)"
-        touch "$scratch/.meld_classifier_failed"
-    else
-        mc_jobid=$(echo "$mc_out" | grep -oP 'Submitted batch job \K\d+' | head -1)
-        echo "meld-classifier sbatch jobid: ${mc_jobid:-?}"
-        echo "  watch with: squeue -j ${mc_jobid:-?}  or  sacct -j ${mc_jobid:-?}"
-    fi
-fi
 
 echo
 echo "Stage 1 finished. Downstream GPU jobs (if dispatched) running asynchronously."
