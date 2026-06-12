@@ -1,0 +1,18 @@
+# Keep the build context small.
+# Anything not whitelisted here would otherwise get sent to the docker daemon
+# every time we build, slowing things down.
+*
+!Dockerfile
+!model_payload/
+!model_payload/**
+
+# Explicit excludes (defensive — should already be covered by `*`)
+nnunet.sif
+*.sif
+.tmp_image.tar
+.build.def
+*.log
+.git
+.gitignore
+README.md
+build.sh

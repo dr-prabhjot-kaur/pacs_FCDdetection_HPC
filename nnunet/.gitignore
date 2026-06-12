@@ -1,0 +1,23 @@
+# Built artifacts (large, regeneratable)
+*.sif
+*.sif.bak_*
+*.tar
+*.tar.gz
+
+# Build-time staging dirs (created and deleted by build.sh)
+model_payload/
+env_payload/
+
+# Generated files
+.build.def
+.tmp_image.tar
+build.log
+*.log
+
+# Editor / OS junk
+.DS_Store
+*.swp
+*.swo
+__pycache__/
+.idea/
+.vscode/

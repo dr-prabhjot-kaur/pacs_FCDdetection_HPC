@@ -13,6 +13,10 @@ containers/
 *.log
 slurm_logs/
 
+# models
+nnunet/nnUNet_results/Dataset003_Combined/nnUNetTrainer__nnUNetPlans__3d_fullres/*/*.pth
+nnunet/nnUNet_results/Dataset003_Combined/nnUNetTrainer__nnUNetPlans__3d_fullre$/*/*.png
+
 # Scratch & throwaway
 scratch/
 scratch_archive/
